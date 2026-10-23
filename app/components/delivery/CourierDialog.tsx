@@ -133,7 +133,7 @@ export function CourierDialog({
     }
 
     if (!recognitionRef.current) {
-      setMicError('Speech recognition is not initialized or unsupported.')
+      setMicError('Speech recognition is not initialized or unsupported in this browser.')
       return
     }
 
@@ -146,24 +146,10 @@ export function CourierDialog({
       setMicError(null)
       setLiveCaption('Listening... Speak now.')
 
-      // Explicit mic permission prompt if needed
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-          stream.getTracks().forEach((track) => track.stop())
-        }
-      } catch (err: any) {
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setMicError('Microphone permission denied. Allow mic access in address bar.')
-          return
-        }
-      }
-
       try {
         recognitionRef.current.start()
       } catch (err: any) {
         console.warn('Could not start recognition:', err)
-        // If already started, stop and restart
         try {
           recognitionRef.current.abort()
           recognitionRef.current.start()
@@ -288,6 +274,29 @@ export function CourierDialog({
             placeholder="Courier speech transcript or type fallback (e.g. 'Left behind the planter, no signature')"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-dash-cyan placeholder-slate-500"
           />
+
+          {/* Quick Voice Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+            <span className="text-slate-400">Quick courier speech:</span>
+            {[
+              'Left behind the planter by the front door, no signature needed',
+              'Package left at front door, signature required',
+              'Nobody home, will reattempt delivery tomorrow',
+            ].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => {
+                  setTypedReply(preset)
+                  setLiveCaption(preset)
+                }}
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition"
+              >
+                💬 "{preset.slice(0, 24)}..."
+              </button>
+            ))}
+          </div>
+
           <div className="flex justify-end">
             <button
               onClick={handleSubmitCourierReply}

@@ -42,6 +42,7 @@ export default function VisitorPage() {
   const [inputText, setInputText] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [audioLevel, setAudioLevel] = useState(0)
   const [liveCaption, setLiveCaption] = useState('')
   const [micError, setMicError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
@@ -52,6 +53,9 @@ export default function VisitorPage() {
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const animFrameRef = useRef<number | null>(null)
 
   // Load saved preferences from localStorage on mount
   useEffect(() => {
@@ -314,9 +318,69 @@ export default function VisitorPage() {
     }
   }
 
-  // Clean up speech recognition on unmount
+  // Real-time Web Audio API meter to visualize mic pickup
+  const startAudioMeter = async (): Promise<MediaStream | null> => {
+    try {
+      if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) return null
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioContextClass) return stream
+
+      const audioCtx = new AudioContextClass()
+      audioContextRef.current = audioCtx
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+      const updateMeter = () => {
+        analyser.getByteFrequencyData(dataArray)
+        let sum = 0
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i]
+        }
+        const avg = sum / dataArray.length
+        const normalized = Math.min(100, Math.round((avg / 128) * 100))
+        setAudioLevel(normalized)
+        animFrameRef.current = requestAnimationFrame(updateMeter)
+      }
+
+      updateMeter()
+      return stream
+    } catch (err: any) {
+      console.warn('Audio meter init error:', err)
+      return null
+    }
+  }
+
+  const stopAudioMeter = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current)
+      animFrameRef.current = null
+    }
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close()
+      } catch {}
+      audioContextRef.current = null
+    }
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop())
+      } catch {}
+      mediaStreamRef.current = null
+    }
+    setAudioLevel(0)
+  }
+
+  // Clean up speech recognition and audio meter on unmount
   useEffect(() => {
     return () => {
+      stopAudioMeter()
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort()
@@ -334,17 +398,8 @@ export default function VisitorPage() {
       window.speechSynthesis.cancel()
     }
 
-    const SpeechRecognitionClass =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-
-    if (!SpeechRecognitionClass) {
-      setMicError(
-        'Speech recognition is not supported in this browser. Please use Chrome or Edge, or type your message below.'
-      )
-      return
-    }
-
     if (isListening) {
+      stopAudioMeter()
       try {
         recognitionRef.current?.stop()
       } catch {}
@@ -354,18 +409,24 @@ export default function VisitorPage() {
 
     setMicError(null)
 
-    // Trigger browser microphone permission dialog explicitly if needed
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        stream.getTracks().forEach((track) => track.stop())
-      }
-    } catch (err: any) {
-      console.warn('getUserMedia mic check:', err)
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setMicError('Microphone permission blocked. Please allow microphone access in your browser address bar.')
-        return
-      }
+    // 1. Start audio visualizer stream
+    const stream = await startAudioMeter()
+    if (!stream) {
+      setMicError(
+        'Microphone permission blocked or mic not found. Please click the camera/mic icon in your browser address bar to allow access.'
+      )
+      return
+    }
+
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (!SpeechRecognitionClass) {
+      setMicError(
+        'Speech recognition (speech-to-text) is not supported in this browser. Please use Google Chrome or Edge, or type your message.'
+      )
+      setIsListening(true)
+      return
     }
 
     try {
@@ -376,54 +437,51 @@ export default function VisitorPage() {
       }
 
       const recognition = new SpeechRecognitionClass()
-      recognition.continuous = true
+      // continuous = false triggers onresult promptly without long buffering
+      recognition.continuous = false
       recognition.interimResults = true
-      recognition.lang = 'en-US'
+      recognition.lang = navigator.language || 'en-US'
       recognition.maxAlternatives = 1
 
       recognition.onstart = () => {
         setIsListening(true)
         setMicError(null)
-        setLiveCaption('Listening... Speak into your mic.')
+        setLiveCaption('Listening... Speak into your mic now.')
       }
 
       recognition.onresult = (event: any) => {
-        let interimText = ''
-        let finalText = ''
-
+        let transcript = ''
         for (let i = 0; i < event.results.length; i++) {
-          const res = event.results[i]
-          if (res.isFinal) {
-            finalText += res[0].transcript + ' '
-          } else {
-            interimText += res[0].transcript
-          }
+          transcript += event.results[i][0].transcript + ' '
         }
-
-        const combined = (finalText + interimText).trim()
-        if (combined) {
-          setLiveCaption(combined)
-          setInputText(combined)
+        const trimmed = transcript.trim()
+        if (trimmed) {
+          setLiveCaption(trimmed)
+          setInputText(trimmed)
         }
       }
 
       recognition.onerror = (event: any) => {
         console.warn('SpeechRecognition error:', event.error)
-        setIsListening(false)
         if (event.error === 'not-allowed') {
-          setMicError('Microphone permission blocked. Click the lock/tune icon in your address bar to allow.')
+          setMicError(
+            'Microphone permission blocked. Click the lock/tune icon in your address bar to allow.'
+          )
         } else if (event.error === 'no-speech') {
-          setMicError('No speech was detected. Please speak closer to your mic or type below.')
+          setMicError('No speech detected. Please speak closer to your mic or type below.')
         } else if (event.error === 'audio-capture') {
-          setMicError('No microphone was found or audio capture failed.')
+          setMicError('No microphone detected on your device or mic is busy.')
         } else if (event.error === 'network') {
-          setMicError('Web Speech network error. Please check your internet connection or use typed input.')
+          setMicError(
+            'Browser speech service network error (Google speech service unreachable). You can type or use the quick buttons below.'
+          )
         } else {
-          setMicError(`Microphone issue (${event.error}). Please type below.`)
+          setMicError(`Mic notice: ${event.error}`)
         }
       }
 
       recognition.onend = () => {
+        stopAudioMeter()
         setIsListening(false)
       }
 
@@ -431,6 +489,7 @@ export default function VisitorPage() {
       recognition.start()
     } catch (e: any) {
       console.error('Mic start error:', e)
+      stopAudioMeter()
       setIsListening(false)
       setMicError('Could not start microphone. Please type your message below.')
     }
@@ -631,6 +690,20 @@ export default function VisitorPage() {
                     <p className="font-mono text-cyan-200 text-xs break-words">
                       "{liveCaption || 'Listening...'}"
                     </p>
+
+                    {/* Real-time Audio Level Bar */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-[10px] text-slate-400 font-mono">Audio Level:</span>
+                      <div className="flex-1 bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-rose-500 transition-all duration-75"
+                          style={{ width: `${Math.max(4, audioLevel)}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono text-cyan-300 w-8 text-right">
+                        {audioLevel}%
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -641,6 +714,7 @@ export default function VisitorPage() {
               onSubmit={(e) => {
                 e.preventDefault()
                 if (isListening) {
+                  stopAudioMeter()
                   try {
                     recognitionRef.current?.stop()
                   } catch {}
@@ -688,6 +762,29 @@ export default function VisitorPage() {
                 Send
               </button>
             </form>
+
+            {/* Quick Visitor Speech Presets */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px]">
+              <span className="text-slate-400 font-medium">Quick speech:</span>
+              {[
+                'I have a package to deliver for you',
+                'Please tell the owner David stopped by',
+                'Help! There is an emergency at the door!',
+              ].map((phrase) => (
+                <button
+                  key={phrase}
+                  type="button"
+                  onClick={() => {
+                    setInputText(phrase)
+                    submitVisitorMessage(phrase)
+                  }}
+                  disabled={!conversationActive || isProcessing}
+                  className="px-2.5 py-1 rounded-full bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition disabled:opacity-40 text-[10px]"
+                >
+                  💬 "{phrase}"
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
