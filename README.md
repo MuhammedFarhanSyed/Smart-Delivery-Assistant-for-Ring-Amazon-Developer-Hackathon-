@@ -113,16 +113,18 @@ This project started from [AmazonAppDev/ring-api-helloworld](https://github.com/
 
 ## ☁️ AWS Builder: Amazon Bedrock
 
-**Service:** Amazon Bedrock (Converse API) with **Amazon Nova Micro** (`amazon.nova-micro-v1:0`), called from `lib/aws/bedrock.ts`.
+**Service:** Amazon Bedrock (Converse API) with **Amazon Nova Micro** (`amazon.nova-micro-v1:0`), called from [`lib/aws/bedrock.ts`](lib/aws/bedrock.ts).
 
-**What it does:** turns the courier's transcribed reply into structured instructions (`location`, `action`, `needs_signature`, `notes`), for example "I left it behind the flower pots, no signature needed" becomes a saved record shown on the dashboard.
+**What it does:**
+1. **Courier Instruction Extraction**: Turns informal courier speech into structured delivery data (`location`, `action`, `needs_signature`, `notes`), e.g., *"I left it behind the flower pots, no signature needed"* becomes a clean record shown on the timeline.
+2. **Busy Mode Visitor Understanding**: In Busy Mode (`/visitor`), classifies visitor speech into `message`, `emergency`, or `other`, and crafts polite, context-aware 1–2 sentence replies strictly honoring owner instructions without hallucinating.
 
 **How it is integrated:**
-- Server-side only, using a plain `fetch` to the Bedrock Runtime Converse endpoint with a Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). No AWS SDK is needed.
-- Enabled with `LLM_EXTRACTION=on`. The model output is validated, and a 7-second timeout applies.
-- If Bedrock is not configured, times out, or returns something unusable, the app falls back to the local keyword extractor. The UI shows which method produced the result.
-- **Only the transcript text is sent to AWS.** Video, frames and snapshots never leave the machine, and keys and transcripts are not logged.
-- Tested with `AWS_REGION=ap-south-1`. The model must be available to your account in the region you choose.
+- Server-side only, using a plain native `fetch` to the Bedrock Runtime Converse endpoint with a Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). Zero AWS SDK bloat.
+- Enabled with `LLM_EXTRACTION=on`. Output is strictly validated with Zod and bounded by a 7-second abort timeout.
+- **Dual-Layer Fallback**: If Bedrock is unconfigured, times out, or returns invalid data, the app falls back seamlessly to deterministic local keyword templates. The UI dynamically displays `AI: Bedrock (Nova)` vs `AI: Fallback`.
+- **Strict Privacy**: **Only transcript text is sent to AWS.** Camera video, frames, snapshots, and visitor biometrics never leave the machine. Keys and transcripts are never logged.
+- Tested with `AWS_REGION=ap-south-1`. Compatible with any AWS region where Nova Micro is enabled.
 
 ```env
 LLM_EXTRACTION=on
@@ -171,11 +173,20 @@ Clicking **"🎬 Run Demo Scenario"** executes the complete visual timeline:
 
 ## 🚪 Busy Mode Visitor Assistant (`/visitor`)
 
-Accessible via the **"Busy Mode"** link in the dashboard header.
+Accessible via the **"🚪 Busy Mode"** button in the dashboard header.
 
 When the homeowner is busy, in a meeting, or away, the assistant takes over doorstep interactions on their behalf:
-- **3-Ring Trigger**: When a visitor clicks the doorbell button 3 times within 10 seconds, the assistant activates.
+- **🔔 Realistic Two-Tone Doorbell Chime ([`lib/sound.ts`](lib/sound.ts))**:
+  - Synthesizes a classic Westminster-style "Ding-Dong" chime using the browser's native **Web Audio API** (830 Hz &rarr; 622 Hz with acoustic exponential decay).
+  - Requires **zero external audio files or downloads** — generated instantly in pure client-side code on every doorbell button press and demo chime.
+- **3-Ring Trigger (10-Second Window)**: When a visitor rings 3 times within 10 seconds, the assistant activates. (The counter automatically resets after 10 seconds idle).
   > *Note on simulation:* The triple ring is simulated in software because the Ring Developer Playground does not emit live doorbell-press events. In a production Appstore release, this binds directly to the Ring `ding` webhook event.
+- **🎙️ Real-Time Hardware Audio Level Visualizer**:
+  - Clicking the microphone activates an active Web Audio decibel meter (`Audio Level: [████████░░░░] 68%`) powered by an `AnalyserNode`.
+  - Gives visitors and judges immediate visual confirmation that their microphone is capturing live soundwaves.
+- **💬 One-Click Quick Speech Presets**:
+  - Includes instant one-click visitor speech buttons (*"I have a package to deliver for you"*, *"Please tell the owner David stopped by"*, *"Help! There is an emergency at the door!"*) and courier presets.
+  - Allows full end-to-end testing of voice conversations without needing microphone hardware or an active internet speech connection.
 - **Automated Identity & Ethics**:
   - The assistant explicitly introduces itself as an automated doorbell assistant.
   - It never pretends to be the homeowner, never shares personal details, and never offers to unlock or open the door.

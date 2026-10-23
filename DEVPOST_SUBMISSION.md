@@ -15,18 +15,20 @@ Missed deliveries and unclear drop-off spots are a daily annoyance, and they are
 - **Delivery Assistant:** when the doorbell rings, it speaks a greeting, captures the courier's spoken reply (with a typed fallback), and turns it into structured instructions: where the package was left, what was done with it, and whether a signature is needed. Residents can read live captions and type a reply that is spoken aloud to the courier.
 - **Package Watch:** the resident draws a drop zone on the camera view. The app calibrates a baseline, detects when a package appears or disappears, and tracks status as Expected, Delivered or Removed, saving local snapshots.
 - **Proximity notice:** if a person overlaps the drop zone after delivery, the app shows "Possible risk: a person approached the package", clearly labeled as a heuristic. It uses no face recognition and does no identification.
+- **Busy Mode Visitor Assistant (`/visitor`):** when the homeowner is in meetings or away, 3 rings within 10 seconds engage an automated assistant. It speaks only the owner's configured instructions, transcribes messages onto the owner's phone mock, and escalates emergencies via red alert flashes, browser notifications, and optional Telegram bot messaging.
+- **Audio Synthesis & Visualizer:** dual-tone Web Audio API Westminster chime ("Ding-Dong") on ring events, real-time decibel level visualizer meter, and one-click quick speech presets.
 - **One timeline:** doorbell, greeting, courier reply, instructions, package status and notices appear in a single readable timeline.
 
 ## How we built it
 Next.js, TypeScript and Tailwind, built on the `ring-api-helloworld` starter. 
 - **Ring Partner API:** device discovery, device status, event history, and live video through WHEP/WebRTC, using the Ring Developer Playground token and simulated streams.
 - **In-browser vision:** TensorFlow.js COCO-SSD for person detection and drop-zone frame differencing for package detection. Video stays on the user's machine.
-- **Speech:** browser speech synthesis and the Web Speech API.
-- **AWS:** Amazon Bedrock (Amazon Nova Micro) converts the courier transcript into structured instructions, with a keyword-based fallback if Bedrock is unavailable.
+- **Speech & Audio:** browser speech synthesis, Web Speech API speech-to-text, and Web Audio API for dual-tone chime sound synthesis and live microphone volume level metering.
+- **AWS:** Amazon Bedrock (Amazon Nova Micro) converts courier transcripts into structured delivery instructions AND powers the Busy Mode visitor assistant conversation classification, with keyword safety-net fallbacks.
 - **Two source modes:** a Ring API mode, and a simulator mode (webcam or uploaded video), plus a "Run Demo Scenario" button that plays the whole flow without any hardware or keys.
 
 ## What's new vs. the starter
-The starter provided token handling, the WHEP stream route, the webhook receiver and the video-processor plugin system. We added the device-source layer, the Delivery Assistant, instruction extraction (keyword and Bedrock), Package Watch, the proximity notice, the session timeline and store, the Ring data panel, the demo scenario and the dashboard. A detailed table is in the README.
+The starter provided token handling, the WHEP stream route, the webhook receiver and the video-processor plugin system. We added the device-source layer, the Delivery Assistant, instruction extraction (keyword and Bedrock), Package Watch, the proximity notice, the session timeline and store, the Ring data panel, the Busy Mode visitor assistant (`/visitor`), native Web Audio chime synthesis and decibel visualizer, the demo scenario, and the unified dashboard. A detailed table is in the README.
 
 ## Challenges
 - The Ring Playground's simulated streams are static (a box on a porch, birds at feeders), with no person or removal events. We built a two-mode design so the Ring API mode shows real API usage while the full story runs on test footage.
