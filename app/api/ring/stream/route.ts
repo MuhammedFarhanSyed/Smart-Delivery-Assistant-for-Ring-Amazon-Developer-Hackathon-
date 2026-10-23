@@ -11,8 +11,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing sdpOffer' }, { status: 400 })
     }
 
-    // Use deviceId from request body, fall back to env var
-    const resolvedDeviceId = deviceId || process.env.NEXT_PUBLIC_RING_DEVICE_ID
+    const token = await getAccessToken()
+
+    // Use deviceId from request body, fall back to env var, or auto-discover
+    let resolvedDeviceId = deviceId || process.env.NEXT_PUBLIC_RING_DEVICE_ID
+    if (!resolvedDeviceId) {
+      try {
+        const devRes = await fetch(`${API_BASE}/v1/devices`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (devRes.ok) {
+          const devData = await devRes.json()
+          if (devData.data && devData.data.length > 0) {
+            resolvedDeviceId = devData.data[0].id
+          }
+        }
+      } catch (err) {
+        console.warn('Auto-discovery for WHEP stream failed:', err)
+      }
+    }
+
     if (!resolvedDeviceId) {
       return NextResponse.json(
         { error: 'No device ID provided. Pass deviceId in request body or set NEXT_PUBLIC_RING_DEVICE_ID.' },
@@ -20,7 +38,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const token = await getAccessToken()
     const whepUrl = `${API_BASE}/v1/devices/${resolvedDeviceId}/media/streaming/whep/sessions`
 
     const response = await fetch(whepUrl, {
