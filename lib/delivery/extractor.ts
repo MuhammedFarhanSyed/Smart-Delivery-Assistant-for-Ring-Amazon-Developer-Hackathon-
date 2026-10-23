@@ -125,8 +125,12 @@ export async function extractInstructions(transcript: string): Promise<DeliveryI
   if (isLlmEnabled) {
     const bedrockResult = await extractWithBedrock(transcript)
     if (bedrockResult) {
+      const lower = transcript.toLowerCase()
+      const saidNoSignature = ['no signature', 'no sign needed', 'no need to sign', 'without signature']
+        .some((p) => lower.includes(p))
       return {
         ...bedrockResult,
+        needs_signature: saidNoSignature ? false : bedrockResult.needs_signature,
         method: 'bedrock',
       }
     }

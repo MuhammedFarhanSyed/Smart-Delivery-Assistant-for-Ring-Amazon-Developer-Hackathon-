@@ -94,7 +94,9 @@ Return ONLY a single valid JSON object with these exact keys:
     return {
       location: typeof parsed.location === 'string' && parsed.location.trim() ? parsed.location.trim() : 'Front Door',
       action: action as 'left' | 'hold' | 'handed_over',
-      needs_signature: Boolean(parsed.needs_signature),
+      needs_signature:
+        parsed.needs_signature === true ||
+        String(parsed.needs_signature).toLowerCase() === 'true',
       notes: typeof parsed.notes === 'string' && parsed.notes.trim() ? parsed.notes.trim() : 'Analyzed by Amazon Nova',
       raw_transcript: transcript,
       timestamp: new Date().toISOString(),
