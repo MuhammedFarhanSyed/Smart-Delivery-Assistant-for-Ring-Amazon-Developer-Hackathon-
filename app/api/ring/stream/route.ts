@@ -33,6 +33,15 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
+      if (response.status === 401) {
+        return NextResponse.json(
+          {
+            error:
+              'Ring Playground token expired (~30m limit). Please copy a fresh token from developer.amazon.com/ring/console/playground into .env.local and restart.',
+          },
+          { status: 401 }
+        )
+      }
       const error = await response.text()
       return NextResponse.json(
         { error: `WHEP failed: ${response.status} - ${error}` },

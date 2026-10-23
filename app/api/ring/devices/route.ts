@@ -22,16 +22,18 @@ export async function GET() {
       let online = false
       if (statusRes.ok) {
         const statusData = await statusRes.json()
-        online = statusData?.data?.attributes?.online || false
+        online = statusData?.data?.attributes?.online ?? false
       }
 
       return NextResponse.json({
-        devices: [{
-          id: DEVICE_ID,
-          name: DEVICE_NAME,
-          online,
-          capabilities: { motionDetection: true },
-        }],
+        devices: [
+          {
+            id: DEVICE_ID,
+            name: DEVICE_NAME,
+            online,
+            capabilities: { motionDetection: true, liveStream: true },
+          },
+        ],
       })
     }
 
@@ -49,14 +51,30 @@ export async function GET() {
     }
 
     const data = await res.json()
+    const rawDevices = data?.data || []
 
-    // Normalize JSON:API response to simple device list
-    const devices = (data?.data || []).map((device: any) => ({
-      id: device.id,
-      name: device.attributes?.name || device.attributes?.description || 'Ring Device',
-      online: device.attributes?.online || false,
-      capabilities: device.attributes?.capabilities || {},
-    }))
+    const devices = await Promise.all(
+      rawDevices.map(async (device: any) => {
+        let isOnline = true
+        try {
+          const statusRes = await fetch(`${API_BASE}/v1/devices/${device.id}/status`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (statusRes.ok) {
+            const statusJson = await statusRes.json()
+            isOnline = statusJson?.data?.attributes?.online ?? true
+          }
+        } catch {
+          // fallback
+        }
+        return {
+          id: device.id,
+          name: device.attributes?.name || device.attributes?.description || 'Ring Device',
+          online: isOnline,
+          capabilities: device.attributes?.capabilities || { motionDetection: true, liveStream: true },
+        }
+      })
+    )
 
     return NextResponse.json({ devices })
   } catch (error) {

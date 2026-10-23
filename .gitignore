@@ -32,3 +32,8 @@ dist/
 # Misc
 *.log
 *.tsbuildinfo
+
+# Local data & Python cache
+data/
+__pycache__/
+*.pyc
