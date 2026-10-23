@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Header } from '../components/Header'
+import { playDoorbellChime } from '@/lib/sound'
 
 interface ChatMessage {
   id: string
@@ -165,6 +166,9 @@ export default function VisitorPage() {
 
   // Handle Doorbell Ring Clicks (3 clicks within 10 seconds)
   const handleDoorbellRing = () => {
+    // Play realistic two-tone doorbell chime sound
+    playDoorbellChime()
+
     if (conversationActive) return
 
     setOwnerAvailableNotice(null)

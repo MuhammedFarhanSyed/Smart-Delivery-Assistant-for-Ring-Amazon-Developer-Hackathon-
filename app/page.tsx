@@ -21,6 +21,7 @@ import { useEventStream } from './hooks/useEventStream'
 import { useCanvasOverlay } from './hooks/useCanvasOverlay'
 import { DeliverySession, PackageStatus } from '@/lib/store'
 import { SourceMode } from '@/lib/source/types'
+import { playDoorbellChime } from '@/lib/sound'
 
 export default function Dashboard() {
   const [sourceMode, setSourceMode] = useState<SourceMode>('simulator')
@@ -309,6 +310,9 @@ export default function Dashboard() {
 
   // Simulate doorbell event
   const handleSimulateDoorbell = async () => {
+    // Play realistic two-tone doorbell chime
+    playDoorbellChime()
+
     try {
       const res = await fetch('/api/delivery/simulate-event', {
         method: 'POST',
@@ -418,6 +422,7 @@ export default function Dashboard() {
 
       // Step 1: Doorbell event
       setDemoStepMessage('2/6: Doorbell chime received...')
+      playDoorbellChime()
       await fetch('/api/delivery/simulate-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
