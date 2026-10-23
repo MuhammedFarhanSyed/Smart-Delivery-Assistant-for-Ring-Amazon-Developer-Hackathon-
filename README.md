@@ -106,6 +106,7 @@ This project started from [AmazonAppDev/ring-api-helloworld](https://github.com/
 | **Proximity notice** | Heuristic "possible risk" notice when a person overlaps the drop zone after delivery, with 10s grace period and resident self-declaration ("🙋 It's me") |
 | **Session timeline** | Delivery timeline and local JSON session store (`lib/store.ts`) |
 | **Ring data panel** | Device list, status and event history (`lib/source/ring-source.ts`, `app/api/source/devices/[id]/status/route.ts`, `app/api/ring/events/history/route.ts`) |
+| **Busy Mode (/visitor)** | Automated visitor assistant answering the door on 3 rings: relays custom instructions, captures messages, and escalates emergencies |
 | **Demo tooling** | "Run Demo Scenario" button (no camera, mic or token needed) and a simulator mode with video upload |
 
 ---
@@ -165,6 +166,25 @@ Clicking **"🎬 Run Demo Scenario"** executes the complete visual timeline:
 5. Box appears & drop zone confirms delivery (`info`).
 6. Person approaches drop zone & proximity notice triggers (`risk`).
 7. Package taken & status updates to `Removed` with local canvas snapshot.
+
+---
+
+## 🚪 Busy Mode Visitor Assistant (`/visitor`)
+
+Accessible via the **"Busy Mode"** link in the dashboard header.
+
+When the homeowner is busy, in a meeting, or away, the assistant takes over doorstep interactions on their behalf:
+- **3-Ring Trigger**: When a visitor clicks the doorbell button 3 times within 10 seconds, the assistant activates.
+  > *Note on simulation:* The triple ring is simulated in software because the Ring Developer Playground does not emit live doorbell-press events. In a production Appstore release, this binds directly to the Ring `ding` webhook event.
+- **Automated Identity & Ethics**:
+  - The assistant explicitly introduces itself as an automated doorbell assistant.
+  - It never pretends to be the homeowner, never shares personal details, and never offers to unlock or open the door.
+- **Relays Owner Instructions**: Accurately speaks only what the owner configured in their notes (with quick-select presets like *"Busy until evening"*, *"Leave packages at the gate"*, or *"No visitors today"*).
+- **Visitor Message & Emergency Classification**:
+  - **Normal Message**: Transcribed and saved directly to the owner's phone mock list with timestamps.
+  - **Emergency Escalation**: Keyword safety net + AI classifier immediately triggers high-priority red phone alerts, browser notifications, and advises the visitor to call 112 if anyone is in danger.
+  - **Optional Telegram Push**: Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env.local` to receive doorstep emergency alerts directly on your mobile device.
+- **Privacy First**: Only transcript text is sent to Amazon Bedrock (Nova Micro). Camera video, snapshots, and visitor biometrics never leave the local browser.
 
 ---
 
