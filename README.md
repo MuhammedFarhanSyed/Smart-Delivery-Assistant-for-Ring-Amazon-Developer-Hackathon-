@@ -8,31 +8,27 @@
 
 > **"Talks to the courier, remembers the delivery instructions, and warns you if someone approaches your package."**
 
-An intelligent doorstep delivery assistant and package watch system built on top of the **Amazon Ring Partner API** and **Amazon Bedrock**. Developed as an entry for the **"Build, Ship, Shape: Amazon Developer Hackathon" (Ring Track)**.
+An intelligent doorstep delivery assistant and package watch system built on top of the **Amazon Ring Partner API** and **Amazon Bedrock**. Developed as an entry for the **"Build, Ship, Shape: Amazon Developer Hackathon" (Ring Track & AWS Builder Mini-Challenge)**.
 
 ---
 
-### 📺 Demo & Media
-- 🎬 **Walkthrough Video**: [Watch the 3-Minute Demo Video](https://youtu.be/your-demo-video-link-here) *(replace with your submission link)*
-- 💻 **Live Application Dashboard**: [http://localhost:3000](http://localhost:3000) (or cloud deployment)
+## 🎥 Demo
+
+[▶ Watch the demo video (under 3 minutes)](YOUR_VIDEO_LINK)
+
+<!-- Add screenshots here: dashboard overview, delivery timeline, Ring API data panel -->
 
 ---
 
-## 🚀 What’s New vs. the Starter Repo
+## 🙋 Who It Helps
 
-This project is built upon the official [AmazonAppDev/ring-api-helloworld](https://github.com/AmazonAppDev/ring-api-helloworld) starter template, fundamentally extending it from a raw API connectivity demonstration into a full-featured, intelligent delivery lifecycle application:
+- **Residents who miss deliveries**: Couriers get a spoken greeting and their reply is saved as clear instructions, so you know where the package is.
+- **Deaf or hard-of-hearing residents**: The courier's reply appears as live captions, and the resident can type a reply that is spoken aloud to the courier.
+- **Small businesses and shared buildings**: A simple record of when a package was delivered, where it was left, and when it was removed.
 
-| Capability / Component | Upstream Starter (`ring-api-helloworld`) | Smart Delivery Assistant (Our Build) |
-|---|---|---|
-| **Device Abstraction** | Hardcoded direct calls to Ring Partner API endpoints only. | **`lib/source/` Device Source Layer**: Pluggable interface (`RingSource` vs `SimulatorSource`), allowing seamless switching between live Ring cameras and zero-token offline testing. |
-| **Doorbell & Courier Audio** | No audio interaction, TTS, or speech recognition. | **Multimodal Courier Voice Flow**: Automated greeting playback (`SpeechSynthesis`), browser Web Speech API courier voice capture, live subtitle captions, and resident talkback synthesis. |
-| **AI Instruction Extraction** | None. | **Amazon Bedrock (Amazon Nova Micro)** integration via lightweight REST API + zero-latency deterministic keyword fallback. Parses drop location, action, signature necessity, and notes. |
-| **Drop-Zone Computer Vision** | Stub processor plugins interface only. | **Production Drop-Zone Differencing Engine**: Baseline auto-calibration, edge margin exclusion (ignores timestamps/watermarks), tunable threshold slider, and state machine (`Expected` → `Delivered` → `Removed`). |
-| **Person Detection & Proximity Alerting** | None. | **In-Browser COCO-SSD Integration**: Detects person entering drop zone, enforces 10s grace period after delivery, requires 2–3s sustained overlap, and fires compliant *"Possible risk"* notices. |
-| **Delivery Verification Flow** | None. | **Automated ~20s Verification Window**: Confirms package presence (`info`) when courier says *"left"*, or generates actionable verification warnings (`warning`) if unconfirmed. |
-| **Resident Self-Declaration** | None. | **"🙋 It's me" Action**: Resident dismisses alerts without biometrics or identity tracking, transitioning status to *"Picked up by resident"*. |
-| **Session Lifecycle Store** | No session management. | **`lib/store.ts`**: Persistent delivery session state, timeline events with 3 plain-language alert levels, and local canvas snapshot captures. |
-| **Scripted Interactive Demo** | None (requires live Ring hardware or active playground stream). | **"🎬 Run Demo Scenario"**: 7-stage end-to-end automated story aligned with synthetic porch footage, runnable on any machine without mic, camera, or tokens. |
+This project uses Ring's package/delivery management and accessibility use cases rather than a plain motion alert.
+
+**Path toward a real product:** The Ring developer docs describe OAuth account linking, webhook event delivery, and a certification step before publishing to the Ring Appstore. This project currently runs against the developer Playground token and simulated streams, and it is not Ring-certified. The design choices here (local video processing, no face recognition, no identity inference, alerts worded as heuristics) are intended to be conservative, and Ring's Computer Vision Guidelines should be reviewed before any real-world release.
 
 ---
 
@@ -92,26 +88,54 @@ flowchart TD
 
 ---
 
-## ☁️ AWS Builder Section: Amazon Bedrock & Nova Micro
+## 🆕 What's New vs. the Starter
 
-The assistant integrates **Amazon Bedrock** for zero-touch semantic understanding of informal courier speech:
+This project started from [AmazonAppDev/ring-api-helloworld](https://github.com/AmazonAppDev/ring-api-helloworld) (MIT). 
 
-- **Foundation Model**: `amazon.nova-micro-v1:0` (Amazon Nova Micro) — ultra-fast, cost-effective inference for real-time edge processing.
-- **REST Converse Integration** (`lib/aws/bedrock.ts`): Built directly with native `fetch` against `https://bedrock-runtime.{region}.amazonaws.com/model/{modelId}/converse`. Zero AWS SDK bundle bloat.
-- **Strict Privacy**:
-  - Only anonymous courier transcript text is passed to the Converse API.
-  - API credentials (`AWS_BEARER_TOKEN_BEDROCK`) remain strictly server-side and are never sent to the browser or written to logs.
-- **Dual-Layer Fallback & Error Resilience**:
-  - Request guarded with a strict 7-second abort timeout.
-  - If Bedrock is disabled (`LLM_EXTRACTION=off`), unconfigured, or unreachable, the app falls back seamlessly to the local keyword extractor with zero UI disruption.
-  - Explicit phrase checks safeguard boolean parsing (e.g., *"no signature needed"* correctly guarantees `needs_signature: false`).
+**Provided by the starter:** Ring token handling (`lib/auth.ts`), the WHEP live-stream route (`app/api/ring/stream`), the webhook receiver with SSE, the video-processor plugin system, and the Python API scripts in `scripts/`.
+
+**Added in this project:**
+
+| Area | What was built |
+|------|----------------|
+| **Device source layer** | `lib/source/` with a `RingSource` (Ring Partner API) and a `SimulatorSource` (webcam / uploaded video), switched by `SOURCE_MODE` |
+| **Delivery Assistant** | Doorbell flow, spoken greeting, courier voice capture with typed fallback, live captions, resident talk-back |
+| **Instruction extraction** | `lib/delivery/extractor.ts` (keyword extractor + fallback logic) and `lib/aws/bedrock.ts` (Amazon Bedrock, Amazon Nova Micro) |
+| **Package Watch** | Adjustable drop zone, baseline calibration, edge-margin masking, frame differencing, in-browser COCO-SSD person detection, `Expected → Delivered → Removed` status, local snapshots |
+| **Delivery verification** | ~20s timer when courier says *"left"*: confirms drop-zone presence (`info`) or issues notice (`warning`) |
+| **Proximity notice** | Heuristic "possible risk" notice when a person overlaps the drop zone after delivery, with 10s grace period and resident self-declaration ("🙋 It's me") |
+| **Session timeline** | Delivery timeline and local JSON session store (`lib/store.ts`) |
+| **Ring data panel** | Device list, status and event history (`lib/source/ring-source.ts`, `app/api/source/devices/[id]/status/route.ts`, `app/api/ring/events/history/route.ts`) |
+| **Demo tooling** | "Run Demo Scenario" button (no camera, mic or token needed) and a simulator mode with video upload |
+
+---
+
+## ☁️ AWS Builder: Amazon Bedrock
+
+**Service:** Amazon Bedrock (Converse API) with **Amazon Nova Micro** (`amazon.nova-micro-v1:0`), called from `lib/aws/bedrock.ts`.
+
+**What it does:** turns the courier's transcribed reply into structured instructions (`location`, `action`, `needs_signature`, `notes`), for example "I left it behind the flower pots, no signature needed" becomes a saved record shown on the dashboard.
+
+**How it is integrated:**
+- Server-side only, using a plain `fetch` to the Bedrock Runtime Converse endpoint with a Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). No AWS SDK is needed.
+- Enabled with `LLM_EXTRACTION=on`. The model output is validated, and a 7-second timeout applies.
+- If Bedrock is not configured, times out, or returns something unusable, the app falls back to the local keyword extractor. The UI shows which method produced the result.
+- **Only the transcript text is sent to AWS.** Video, frames and snapshots never leave the machine, and keys and transcripts are not logged.
+- Tested with `AWS_REGION=ap-south-1`. The model must be available to your account in the region you choose.
+
+```env
+LLM_EXTRACTION=on
+AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key
+AWS_REGION=ap-south-1
+BEDROCK_MODEL_ID=amazon.nova-micro-v1:0
+```
 
 ---
 
 ## ⚡ Key Features
 
 ### 1. Delivery Assistant & Multimodal Voice Flow
-- **Automated Doorbell Greeting**: Browser `speechSynthesis` speaks *"Hi! Please leave the package or tell me where you left it."* upon doorbell ding.
+- **Automated Doorbell Greeting**: Speaks *"Hi! Please leave the package or tell me where you left it."* via browser `speechSynthesis` when the doorbell rings.
 - **Voice-to-Text Courier Capture**: Captures speech using the browser's Web Speech API (`SpeechRecognition`) with an immediate typed fallback.
 - **Structured Instruction Extraction**: Extracts drop location (e.g. *Behind planter by front door*), action (`left`, `hold`, `handed_over`), signature requirements, and safety notes.
 - **Resident Talkback & Live Captions**: Live transcription with bidirectional text-to-speech talkback.
@@ -146,13 +170,13 @@ Clicking **"🎬 Run Demo Scenario"** executes the complete visual timeline:
 
 ## 🔌 Ring Partner API Usage
 
-This codebase directly calls the Ring Partner API (`https://api.amazonvision.com/v1`):
+This codebase directly interfaces with the Ring Partner API (`https://api.amazonvision.com/v1`):
 
 | Endpoint | Method | Implementation File | Usage in Project |
 |---|:---:|---|---|
-| `/v1/devices` | `GET` | [`lib/source/ring-source.ts`](lib/source/ring-source.ts) | Discovers linked Ring doorbells and cameras. |
-| `/v1/devices/{id}/status` | `GET` | [`app/api/source/devices/[id]/status/route.ts`](app/api/source/devices/[id]/status/route.ts) | Queries device online connectivity and battery status. |
-| `/v1/devices/{id}/capabilities` | `GET` | [`scripts/device_capabilities.py`](scripts/device_capabilities.py) | Python helper script to inspect video codecs, resolutions, and motion zones. |
+| `/v1/devices` | `GET` | [`lib/source/ring-source.ts`](lib/source/ring-source.ts) | Auto-discovers linked Ring doorbells and cameras. |
+| `/v1/devices/{id}/status` | `GET` | [`app/api/source/devices/[id]/status/route.ts`](app/api/source/devices/[id]/status/route.ts) | Reads device online connectivity and health. |
+| `/v1/devices/{id}/capabilities` | `GET` | [`scripts/device_capabilities.py`](scripts/device_capabilities.py) | Helper script (from the starter) to inspect video codecs and motion capabilities; not called by the web app. |
 | `/v1/history/devices/{id}/events` | `GET` | [`app/api/ring/events/history/route.ts`](app/api/ring/events/history/route.ts) | Fetches past motion, ding, and live-view events for the Ring Data Panel. |
 | `/v1/devices/{id}/media/streaming/whep/sessions` | `POST` | [`app/api/ring/stream/route.ts`](app/api/ring/stream/route.ts) | Negotiates WHEP SDP offer/answer to establish low-latency WebRTC live stream. |
 | `/v1/devices/{id}/media/streaming/whep/sessions/{id}` | `DELETE` | [`app/api/ring/stream/route.ts`](app/api/ring/stream/route.ts) | Closes WHEP streaming session cleanly on stop or timeout. |
@@ -166,7 +190,7 @@ Set `SOURCE_MODE` in `.env.local` to switch modes:
 ### 1. `SOURCE_MODE=ring`
 - **Badge**: `Ring API (Playground simulated stream)`
 - Connects to the real **Ring Partner API** using your Developer Playground access token.
-- Displays the **Ring Partner API Data** inspector showing live connected devices, online status, battery level, and recent event history.
+- Displays the **Ring Partner API Data** inspector showing live connected devices, online status, and recent event history.
 - Streams live porch footage via WHEP WebRTC protocol.
 - Gracefully handles Playground 30–60 second session limits with a one-click **"Restart Live Stream"** button.
 
@@ -178,13 +202,18 @@ Set `SOURCE_MODE` in `.env.local` to switch modes:
 
 ---
 
-## ⚠️ Known Limitations & Boundaries
+## ⚠️ Limitations
 
-In the spirit of honest technical reporting:
-- **Playground Stream Static Footage**: Ring Developer Playground live streams ("Package" and "Motion") loop short pre-recorded video clips. The "Package" stream is a static porch scene with a box already present (no live humans or box removals occur in the stream itself).
-- **Dynamic Interaction on Test Footage**: Dynamic person approach and box removal flows are verified and demonstrated via uploaded test footage or the built-in scripted demo scenario.
-- **Webhooks**: Live Ring webhooks require an AWS Lambda or publicly-routable HTTPS URL; local development monitors events via polling and local event simulation.
-- **Speech Recognition**: The Web Speech API depends on the browser vendor's recognition service (requires Google Chrome or Microsoft Edge and internet access). A typed text fallback is provided for offline or non-mic setups.
+Being upfront about what this prototype does and does not do:
+
+- **The Ring Playground streams are simulated and mostly static.** The Package stream shows a box on a porch that never moves, and the Motion stream shows birds. There is no person or package-removal event on the Ring streams, so the full `Delivered → person approaches → Removed` flow is demonstrated in simulator mode with test footage and in the scripted demo scenario.
+- **The doorbell is simulated.** The Playground does not provide a doorbell-press event, so the doorbell is triggered by a button. The Ring event history panel shows real API data, but the events returned for the Playground device were `on_demand` events.
+- **Webhooks are not exercised live.** The webhook receiver from the starter is included, but the Playground does not send events to it, so the dashboard's webhook feed stays empty.
+- **Detection is heuristic.** Package detection uses frame differencing inside a user-drawn drop zone (the COCO-SSD model has no "package" class), and person detection uses COCO-SSD. Lighting changes can cause false positives, which is why baseline calibration and a sensitivity slider are provided. Results were tuned on test footage, not a large real-world dataset.
+- **Alerts are not proof of anything.** The app says "possible risk" and never identifies anyone.
+- **Speech recognition uses the browser's built-in Web Speech API** (Chrome or Edge recommended). Audio is processed by the browser vendor's service, and the microphone only works on `localhost` or HTTPS. A typed fallback is provided.
+- **Playground streams are short-lived** (30 to 60 seconds), and the access token expires after about 30 minutes. Use the Restart Live Stream button and generate a fresh token when needed.
+- **Prototype storage and scope:** A local JSON file store, a single device, and no user accounts. It is not Ring-certified.
 
 ---
 
@@ -197,9 +226,9 @@ In the spirit of honest technical reporting:
 
 ---
 
-## 🚀 Getting Started
+## 🛠 Getting Started
 
-### 1. Clone & Install
+### 1. Installation
 
 ```bash
 git clone https://github.com/MuhammedFarhanSyed/Smart-Delivery-Assistant-for-Ring-Amazon-Developer-Hackathon-.git
@@ -210,14 +239,16 @@ npm install
 ### 2. Environment Configuration
 
 ```bash
-# Windows:
-copy .env.example .env.local
-
-# macOS/Linux:
+# macOS / Linux
 cp .env.example .env.local
+
+# Windows (Command Prompt)
+copy .env.example .env.local
 ```
 
-Configure `.env.local`:
+The default `SOURCE_MODE=simulator` needs no tokens or keys. Requirements: Node.js 18+ and Chrome or Edge.
+
+To connect to Ring or enable Amazon Bedrock, configure `.env.local`:
 
 ```env
 # Mode 1: Simulator (Default - no token needed)
@@ -230,8 +261,8 @@ SOURCE_MODE=simulator
 
 # Optional: Amazon Bedrock (Nova Micro)
 # LLM_EXTRACTION=on
-# AWS_BEARER_TOKEN_BEDROCK=your_bedrock_bearer_token
-# AWS_REGION=us-east-1
+# AWS_BEARER_TOKEN_BEDROCK=your_bedrock_api_key
+# AWS_REGION=ap-south-1
 # BEDROCK_MODEL_ID=amazon.nova-micro-v1:0
 ```
 
