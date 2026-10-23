@@ -6,6 +6,8 @@
 [![Amazon Bedrock](https://img.shields.io/badge/Amazon%20Bedrock-Nova%20Micro-232F3E?logo=amazon-aws)](https://aws.amazon.com/bedrock/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+![Smart Delivery Assistant for Ring](public/hero_banner.jpg)
+
 > **"Talks to the courier, remembers the delivery instructions, and warns you if someone approaches your package."**
 
 An intelligent doorstep delivery assistant and package watch system built on top of the **Amazon Ring Partner API** and **Amazon Bedrock**. Developed as an entry for the **"Build, Ship, Shape: Amazon Developer Hackathon" (Ring Track & AWS Builder Mini-Challenge)**.
