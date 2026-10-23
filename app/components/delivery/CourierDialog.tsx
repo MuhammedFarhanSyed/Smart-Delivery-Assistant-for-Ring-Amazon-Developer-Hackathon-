@@ -24,6 +24,7 @@ export function CourierDialog({
   const [liveCaption, setLiveCaption] = useState('')
   const [typedReply, setTypedReply] = useState('')
   const [residentText, setResidentText] = useState('')
+  const [micError, setMicError] = useState<string | null>(null)
 
   const recognitionRef = useRef<any>(null)
 
@@ -41,26 +42,48 @@ export function CourierDialog({
 
     try {
       const recognition = new SpeechRecognitionClass()
-      recognition.continuous = false
+      recognition.continuous = true
       recognition.interimResults = true
       recognition.lang = 'en-US'
+      recognition.maxAlternatives = 1
 
       recognition.onstart = () => {
         setIsListening(true)
+        setMicError(null)
       }
 
       recognition.onresult = (event: any) => {
-        let current = ''
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          current += event.results[i][0].transcript
+        let interimText = ''
+        let finalText = ''
+
+        for (let i = 0; i < event.results.length; i++) {
+          const res = event.results[i]
+          if (res.isFinal) {
+            finalText += res[0].transcript + ' '
+          } else {
+            interimText += res[0].transcript
+          }
         }
-        setLiveCaption(current)
-        setTypedReply(current)
+
+        const combined = (finalText + interimText).trim()
+        if (combined) {
+          setLiveCaption(combined)
+          setTypedReply(combined)
+        }
       }
 
       recognition.onerror = (event: any) => {
         console.warn('SpeechRecognition error:', event.error)
         setIsListening(false)
+        if (event.error === 'not-allowed') {
+          setMicError('Microphone permission blocked. Please allow mic access in your browser address bar.')
+        } else if (event.error === 'no-speech') {
+          setMicError('No speech detected. Please speak closer to your mic or type below.')
+        } else if (event.error === 'audio-capture') {
+          setMicError('No microphone was found on your device.')
+        } else if (event.error === 'network') {
+          setMicError('Browser speech service network error. Check your internet connection or type below.')
+        }
       }
 
       recognition.onend = () => {
@@ -71,6 +94,14 @@ export function CourierDialog({
     } catch (e) {
       console.warn('SpeechRecognition init error:', e)
       setSpeechSupported(false)
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort()
+        } catch {}
+      }
     }
   }, [])
 
@@ -93,18 +124,50 @@ export function CourierDialog({
   }
 
   // Toggle listening for courier speech
-  const toggleListening = () => {
-    if (!recognitionRef.current) return
+  const toggleListening = async () => {
+    if (typeof window === 'undefined') return
+
+    // Cancel speech so mic doesn't capture speaker echo
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+
+    if (!recognitionRef.current) {
+      setMicError('Speech recognition is not initialized or unsupported.')
+      return
+    }
 
     if (isListening) {
-      recognitionRef.current.stop()
+      try {
+        recognitionRef.current.stop()
+      } catch {}
       setIsListening(false)
     } else {
-      setLiveCaption('')
+      setMicError(null)
+      setLiveCaption('Listening... Speak now.')
+
+      // Explicit mic permission prompt if needed
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+          stream.getTracks().forEach((track) => track.stop())
+        }
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setMicError('Microphone permission denied. Allow mic access in address bar.')
+          return
+        }
+      }
+
       try {
         recognitionRef.current.start()
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Could not start recognition:', err)
+        // If already started, stop and restart
+        try {
+          recognitionRef.current.abort()
+          recognitionRef.current.start()
+        } catch {}
       }
     }
   }
@@ -189,6 +252,20 @@ export function CourierDialog({
             )}
           </div>
         </div>
+
+        {/* Mic Error Notice */}
+        {micError && (
+          <div className="p-2 rounded-lg bg-red-950/70 border border-red-800 text-red-200 text-xs flex items-center justify-between gap-2">
+            <span>⚠️ {micError}</span>
+            <button
+              type="button"
+              onClick={() => setMicError(null)}
+              className="text-[10px] text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Live Captions Display */}
         {(isListening || liveCaption) && (

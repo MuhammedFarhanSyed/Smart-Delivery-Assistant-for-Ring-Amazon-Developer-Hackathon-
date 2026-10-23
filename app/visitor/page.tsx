@@ -42,6 +42,8 @@ export default function VisitorPage() {
   const [inputText, setInputText] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [liveCaption, setLiveCaption] = useState('')
+  const [micError, setMicError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [aiEngine, setAiEngine] = useState<'bedrock' | 'fallback'>('fallback')
   const [notificationPermission, setNotificationPermission] = useState<string>('default')
@@ -312,45 +314,125 @@ export default function VisitorPage() {
     }
   }
 
+  // Clean up speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort()
+        } catch {}
+      }
+    }
+  }, [])
+
   // Web Speech API Voice Input
-  const handleToggleMic = () => {
+  const handleToggleMic = async () => {
     if (typeof window === 'undefined') return
-    const SpeechRecognition =
+
+    // Immediately stop assistant speech so mic doesn't capture it
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+
+    const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
-    if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge, or type below.')
+    if (!SpeechRecognitionClass) {
+      setMicError(
+        'Speech recognition is not supported in this browser. Please use Chrome or Edge, or type your message below.'
+      )
       return
     }
 
     if (isListening) {
-      recognitionRef.current?.stop()
+      try {
+        recognitionRef.current?.stop()
+      } catch {}
       setIsListening(false)
       return
     }
 
-    try {
-      const recognition = new SpeechRecognition()
-      recognition.continuous = false
-      recognition.interimResults = false
-      recognition.lang = 'en-US'
+    setMicError(null)
 
-      recognition.onstart = () => setIsListening(true)
-      recognition.onend = () => setIsListening(false)
-      recognition.onerror = () => setIsListening(false)
+    // Trigger browser microphone permission dialog explicitly if needed
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream.getTracks().forEach((track) => track.stop())
+      }
+    } catch (err: any) {
+      console.warn('getUserMedia mic check:', err)
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setMicError('Microphone permission blocked. Please allow microphone access in your browser address bar.')
+        return
+      }
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort()
+        } catch {}
+      }
+
+      const recognition = new SpeechRecognitionClass()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+      recognition.maxAlternatives = 1
+
+      recognition.onstart = () => {
+        setIsListening(true)
+        setMicError(null)
+        setLiveCaption('Listening... Speak into your mic.')
+      }
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results?.[0]?.[0]?.transcript
-        if (transcript) {
-          submitVisitorMessage(transcript)
+        let interimText = ''
+        let finalText = ''
+
+        for (let i = 0; i < event.results.length; i++) {
+          const res = event.results[i]
+          if (res.isFinal) {
+            finalText += res[0].transcript + ' '
+          } else {
+            interimText += res[0].transcript
+          }
         }
+
+        const combined = (finalText + interimText).trim()
+        if (combined) {
+          setLiveCaption(combined)
+          setInputText(combined)
+        }
+      }
+
+      recognition.onerror = (event: any) => {
+        console.warn('SpeechRecognition error:', event.error)
+        setIsListening(false)
+        if (event.error === 'not-allowed') {
+          setMicError('Microphone permission blocked. Click the lock/tune icon in your address bar to allow.')
+        } else if (event.error === 'no-speech') {
+          setMicError('No speech was detected. Please speak closer to your mic or type below.')
+        } else if (event.error === 'audio-capture') {
+          setMicError('No microphone was found or audio capture failed.')
+        } else if (event.error === 'network') {
+          setMicError('Web Speech network error. Please check your internet connection or use typed input.')
+        } else {
+          setMicError(`Microphone issue (${event.error}). Please type below.`)
+        }
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
       }
 
       recognitionRef.current = recognition
       recognition.start()
-    } catch (e) {
+    } catch (e: any) {
       console.error('Mic start error:', e)
       setIsListening(false)
+      setMicError('Could not start microphone. Please type your message below.')
     }
   }
 
@@ -512,10 +594,58 @@ export default function VisitorPage() {
               )}
             </div>
 
+            {/* Live Speech Feedback or Mic Error Notice */}
+            {(isListening || liveCaption || micError) && (
+              <div
+                className={`p-2.5 rounded-lg text-xs border transition ${
+                  micError
+                    ? 'bg-red-950/80 border-red-800 text-red-200'
+                    : 'bg-black/75 border-cyan-800 text-slate-100 shadow'
+                }`}
+              >
+                {micError ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span>⚠️</span>
+                      <span>{micError}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMicError(null)}
+                      className="text-[10px] text-slate-400 hover:text-white transition px-1.5 py-0.5 rounded bg-slate-800"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-[10px] uppercase tracking-wider">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                        <span>Microphone Active • Speak clearly</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Click Stop Mic when done
+                      </span>
+                    </div>
+                    <p className="font-mono text-cyan-200 text-xs break-words">
+                      "{liveCaption || 'Listening...'}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Visitor Response Controls */}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
+                if (isListening) {
+                  try {
+                    recognitionRef.current?.stop()
+                  } catch {}
+                  setIsListening(false)
+                }
                 submitVisitorMessage(inputText)
               }}
               className="flex items-center gap-2 pt-1"
@@ -524,14 +654,15 @@ export default function VisitorPage() {
                 type="button"
                 onClick={handleToggleMic}
                 disabled={!conversationActive || isProcessing}
-                className={`p-2.5 rounded-lg border text-sm transition flex items-center justify-center shrink-0 disabled:opacity-40 ${
+                className={`px-3 py-2 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 shrink-0 disabled:opacity-40 ${
                   isListening
                     ? 'bg-rose-600 border-rose-500 text-white animate-pulse'
                     : 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-cyan-400'
                 }`}
-                title="Speak using microphone"
+                title={isListening ? 'Stop listening' : 'Speak using microphone'}
               >
-                🎤
+                <span>{isListening ? '⏹' : '🎤'}</span>
+                <span>{isListening ? 'Stop' : 'Mic'}</span>
               </button>
 
               <input
@@ -541,7 +672,9 @@ export default function VisitorPage() {
                 disabled={!conversationActive || isProcessing}
                 placeholder={
                   conversationActive
-                    ? 'Type your reply as the visitor (or click mic)...'
+                    ? isListening
+                      ? 'Listening to your voice...'
+                      : 'Type your reply (or click Mic)...'
                     : 'Ring 3 times to start conversation...'
                 }
                 className="flex-1 bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
